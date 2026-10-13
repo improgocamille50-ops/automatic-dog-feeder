@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Automatic Dog Feeder with Scheduled Feeding and Portion Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#E6EDE8; --surface:#F5F9F6; --ink:#14302A; --muted:#5A6F67; --line:#C5D3CB;
+  --bowl:#2754D1; --on-bowl:#FFFFFF; --kibble:#D99A2B; --ok:#1B8755; --bad:#BC3A2C;
+  --display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1917; --surface:#14251F; --ink:#E5F0EB; --muted:#8CA69C; --line:#26403A;
+    --bowl:#7098FF; --on-bowl:#0D1917; --kibble:#F0B84A; --ok:#4CC58A; --bad:#FF8070;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1917; --surface:#14251F; --ink:#E5F0EB; --muted:#8CA69C; --line:#26403A;
+  --bowl:#7098FF; --on-bowl:#0D1917; --kibble:#F0B84A; --ok:#4CC58A; --bad:#FF8070;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
+h1,h2,h3{font-family:var(--display);margin:0;line-height:1.1;letter-spacing:-.01em}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--bowl);outline-offset:2px}
+
+.wrap{max-width:1120px;margin:0 auto;padding:20px 20px 48px}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;padding:8px 0 20px;border-bottom:2px solid var(--ink)}
+header h1{font-size:clamp(1.9rem,4.5vw,3rem);font-weight:700}
+header p{margin:6px 0 0;color:var(--muted)}
+.hdr-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:.9rem;font-weight:500}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.pill.on .dot{background:var(--ok)} .pill.off .dot{background:var(--bad)} .pill.demo .dot{background:var(--kibble)}
+.btn{border:1px solid var(--ink);background:transparent;padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:600}
+.btn:hover{background:var(--ink);color:var(--bg)}
+.btn.primary{background:var(--bowl);border-color:var(--bowl);color:var(--on-bowl)}
+.btn.primary:hover{filter:brightness(1.08);background:var(--bowl);color:var(--on-bowl)}
+.btn:disabled{opacity:.5;cursor:not-allowed;filter:none}
+.btn.small{padding:5px 10px;font-size:.88rem;border-color:var(--line)}
+
+main{display:grid;grid-template-columns:1.15fr 1fr;gap:36px 40px;margin-top:28px}
+section{min-width:0}
+h2{font-size:1.4rem;margin-bottom:14px}
+.sec-note{color:var(--muted);margin:-6px 0 16px;font-size:.95rem}
+
+/* feed panel */
+.feed{display:grid;grid-template-columns:minmax(150px,230px) 1fr;gap:28px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:24px}
+.feed h2{grid-column:1/-1;margin-bottom:0}
+svg.hopper{width:100%;height:auto;display:block}
+.hopper .outline{fill:none;stroke:var(--ink);stroke-width:4;stroke-linejoin:round}
+.hopper .level{fill:var(--kibble);transition:y .8s ease,height .8s ease}
+.hopper .gate{fill:var(--ink);transform-origin:100px 219px;transition:transform .5s cubic-bezier(.3,.7,.3,1)}
+.hopper .bowl-fill{fill:var(--bowl)}
+.hopper .bowl-rim{fill:none;stroke:var(--ink);stroke-width:4}
+.hopper .drop{fill:var(--kibble);opacity:0}
+.feeding .drop{opacity:1;animation:fall .6s linear infinite}
+.feeding .drop:nth-of-type(2){animation-delay:.15s}.feeding .drop:nth-of-type(3){animation-delay:.3s}.feeding .drop:nth-of-type(4){animation-delay:.45s}
+@keyframes fall{from{transform:translateY(0)}to{transform:translateY(36px)}}
+@media (prefers-reduced-motion:reduce){.feeding .drop{animation:none}.hopper .level,.hopper .gate{transition:none}}
+.hopper-read{text-align:center;margin-top:8px}
+.hopper-read b{font-family:var(--display);font-size:1.5rem;display:block}
+.hopper-read span{color:var(--muted);font-size:.9rem}
+
+.portion-label{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.portion-num{font-family:var(--display);font-size:3.2rem;font-weight:700;line-height:1}
+.portion-num small{font-size:1.1rem;font-weight:500;color:var(--muted);margin-left:4px}
+.est{color:var(--muted);font-size:.9rem}
+input[type=range]{width:100%;margin:14px 0 8px;accent-color:var(--bowl);height:28px}
+.presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.presets button{border:1px solid var(--line);background:transparent;border-radius:999px;padding:5px 14px;cursor:pointer;font-weight:500}
+.presets button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.feed-actions{display:flex;gap:10px;flex-wrap:wrap}
+.feed-actions .btn.primary{flex:1 1 180px;padding:14px 18px;font-size:1.1rem}
+
+/* schedule */
+.sched-list{list-style:none;margin:0 0 16px;padding:0;border-top:1px solid var(--line)}
+.sched-list li{display:grid;grid-template-columns:1fr auto auto auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.sched-time{font-family:var(--display);font-size:1.7rem;font-weight:700;line-height:1}
+.sched-time small{font-size:.95rem;font-weight:500;color:var(--muted);margin-left:4px}
+.sched-g{color:var(--muted);font-weight:500}
+.off-row .sched-time,.off-row .sched-g{opacity:.45}
+.switch{position:relative;width:46px;height:26px;border-radius:999px;border:1px solid var(--ink);background:transparent;cursor:pointer;padding:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--ink);transition:transform .2s}
+.switch[aria-checked="true"]{background:var(--bowl);border-color:var(--bowl)}
+.switch[aria-checked="true"]::after{transform:translateX(20px);background:var(--on-bowl)}
+.icon-btn{border:0;background:transparent;cursor:pointer;color:var(--muted);padding:6px;border-radius:8px;font-size:1.1rem;line-height:1}
+.icon-btn:hover{color:var(--bad)}
+.empty{color:var(--muted);padding:18px 0}
+.add-form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:4px;font-size:.88rem;color:var(--muted)}
+.field input{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-size:1rem;color:var(--ink)}
+.field input[type=number]{width:96px}
+
+/* today + log */
+.today{grid-column:1}
+.log{grid-column:2}
+.meter{height:16px;border-radius:999px;background:var(--line);overflow:hidden;margin:10px 0 8px}
+.meter i{display:block;height:100%;background:var(--kibble);border-radius:999px;transition:width .6s}
+.today-row{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.big{font-family:var(--display);font-size:2.2rem;font-weight:700;line-height:1}
+.big small{font-size:1rem;color:var(--muted);font-weight:500}
+.next{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted)}
+.next b{color:var(--ink)}
+.log-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.log-list li{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.tag{font-size:.82rem;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid var(--line);margin-left:8px}
+.tag.manual{border-color:var(--bowl);color:var(--bowl)}
+
+/* dialog + toast */
+dialog{border:1px solid var(--ink);border-radius:18px;background:var(--surface);color:var(--ink);padding:24px;max-width:440px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(10,20,18,.5)}
+dialog h2{margin-bottom:12px}
+.radio{display:flex;gap:10px;align-items:flex-start;margin:10px 0;cursor:pointer}
+.radio input{margin-top:5px;accent-color:var(--bowl)}
+.hint{color:var(--muted);font-size:.88rem;margin:8px 0 0}
+.served .conn-fields{display:none}
+.dlg-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,30px);background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:12px;font-weight:500;opacity:0;pointer-events:none;transition:.25s;max-width:calc(100% - 32px);z-index:10}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#toast.err{background:var(--bad);color:#fff}
+
+@media (max-width:860px){
+  main{grid-template-columns:1fr}
+  .today,.log{grid-column:1}
+}
+@media (max-width:520px){
+  .feed{grid-template-columns:1fr;padding:18px}
+  svg.hopper{max-width:200px;margin:0 auto}
+  .sched-list li{grid-template-columns:1fr auto auto;}
+  .sched-list li .sched-g{grid-column:1}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Automatic Dog Feeder</h1>
+      <p>Scheduled feeding and portion control &middot; ESP32 + servo</p>
+    </div>
+    <div class="hdr-right">
+      <span id="conn" class="pill"><span class="dot"></span><span id="connText">Connecting…</span></span>
+      <button class="btn" id="settingsBtn">Connection settings</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="feed" id="feedPanel">
+      <h2>Feed now</h2>
+      <div>
+        <svg class="hopper" id="hopperSvg" viewBox="0 0 240 300" role="img" aria-label="Food hopper level and servo gate">
+          <defs>
+            <clipPath id="hopperClip"><path d="M40 20 H200 V150 L132 215 H108 L40 150 Z"/></clipPath>
+          </defs>
+          <rect id="level" class="level" x="30" y="100" width="180" height="115" clip-path="url(#hopperClip)"/>
+          <path class="outline" d="M40 20 H200 V150 L132 215 H108 L40 150 Z"/>
+          <rect id="gate" class="gate" x="100" y="216" width="40" height="6" rx="2"/>
+          <circle class="drop" cx="112" cy="226" r="4"/>
+          <circle class="drop" cx="120" cy="226" r="4"/>
+          <circle class="drop" cx="128" cy="226" r="4"/>
+          <circle class="drop" cx="116" cy="226" r="4"/>
+          <path class="bowl-fill" d="M62 266 H178 Q172 296 120 296 Q68 296 62 266 Z"/>
+          <path class="bowl-rim" d="M58 266 H182"/>
+        </svg>
+        <div class="hopper-read"><b id="remainText">–</b><span id="remainSub">hopper level</span></div>
+      </div>
+      <div>
+        <div class="portion-label">
+          <div class="portion-num"><span id="portionNum">100</span><small>g</small></div>
+          <div class="est" id="est">gate open for a set time per feeding</div>
+        </div>
+        <input type="range" id="portion" min="10" max="300" step="5" value="100" aria-label="Portion size in grams">
+        <div class="feed-actions">
+          <button class="btn primary" id="feedBtn">Dispense food</button>
+          <button class="btn" id="refillBtn" title="Tell the feeder the hopper has been refilled">Hopper refilled</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="schedule">
+      <h2>Feeding schedule</h2>
+      <p class="sec-note">The feeder dispenses each portion automatically at these times, every day.</p>
+      <ul class="sched-list" id="schedList"></ul>
+      <form class="add-form" id="addForm" onsubmit="return false">
+        <label class="field">Time<input type="time" id="newTime" value="08:00" required></label>
+        <label class="field">Portion (g)<input type="number" id="newGrams" value="100" min="10" max="300" step="5" required></label>
+        <button class="btn primary" id="addBtn" type="button">Add feeding</button>
+      </form>
+    </section>
+
+    <section class="today">
+      <h2>Today</h2>
+      <div class="today-row">
+        <div class="big"><span id="todayG">0</span><small> g fed</small></div>
+        <div class="big"><small>goal </small><span id="goalG">400</span><small> g</small></div>
+      </div>
+      <div class="meter" role="progressbar" aria-label="Food dispensed today" aria-valuemin="0" aria-valuemax="100" id="meterWrap"><i id="meter" style="width:0%"></i></div>
+      <div class="next" id="next">No feedings scheduled.</div>
+    </section>
+
+    <section class="log">
+      <h2>Feeding history</h2>
+      <ul class="log-list" id="logList"></ul>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg">
+  <h2>Connection settings</h2>
+  <div class="field"><span>Daily goal (g)</span><input id="goalInput" type="number" min="50" max="2000" step="10" value="400"></div>
+  <div class="conn-fields">
+    <label class="radio"><input type="radio" name="mode" value="demo"><span><b>Demo mode</b><br><span class="hint">Runs in your browser with a simulated feeder. Good for trying out the layout.</span></span></label>
+    <label class="radio"><input type="radio" name="mode" value="esp32"><span><b>Real ESP32</b><br><span class="hint">Talks to your feeder over Wi-Fi.</span></span></label>
+    <div class="field" style="margin-top:8px"><span>ESP32 IP address (shown in the Serial Monitor)</span><input id="ipInput" placeholder="192.168.1.50" inputmode="decimal"></div>
+    <p class="hint">The easiest way to control the real feeder is to open the dashboard from the ESP32 itself: type its IP address into your browser (http://&lt;ip&gt;).</p>
+  </div>
+  <div class="dlg-actions"><button class="btn" id="dlgCancel">Cancel</button><button class="btn primary" id="dlgSave">Save</button></div>
+</dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+
+/* ---------- settings ---------- */
+let cfg = { mode: 'demo', ip: '', goal: 400 };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem('feeder-cfg') || '{}')); } catch (e) {}
+function saveCfg(){ try { localStorage.setItem('feeder-cfg', JSON.stringify(cfg)); } catch (e) {} }
+// When this page is opened from the ESP32 itself (http://<esp32-ip>/), talk to it directly.
+const SERVED = location.protocol === 'http:';
+if (SERVED) { cfg.mode = 'esp32'; cfg.ip = ''; document.body.classList.add('served'); }
+
+/* ---------- demo feeder (simulated ESP32) ---------- */
+const demo = {
+  s: { remaining: 820, capacity: 1000, servo: 0, feeding: false, rssi: -58 },
+  schedules: [
+    { id: 0, used: true, enabled: true, hour: 7,  minute: 0,  grams: 150 },
+    { id: 1, used: true, enabled: true, hour: 12, minute: 30, grams: 80 },
+    { id: 2, used: true, enabled: true, hour: 18, minute: 0,  grams: 150 }
+  ],
+  log: [], fired: {},
+  now(){ return Math.floor(Date.now()/1000); },
+  feed(g, manual){
+    if (this.s.feeding) throw new Error('Already dispensing');
+    if (g < 10 || g > 300) throw new Error('Portion must be 10–300 g');
+    if (g > this.s.remaining) throw new Error('Hopper low: only ' + this.s.remaining + ' g left');
+    this.s.feeding = true; this.s.servo = 90; this.s.remaining -= g;
+    this.log.unshift({ t: this.now(), grams: g, src: manual ? 'manual' : 'schedule' });
+    this.log = this.log.slice(0, 20);
+    setTimeout(() => { this.s.feeding = false; this.s.servo = 0; refresh(); }, 11000);
+  },
+  tick(){
+    const d = new Date(), key = d.toDateString();
+    this.schedules.forEach(sc => {
+      if (!sc.used || !sc.enabled) return;
+      if (sc.hour === d.getHours() && sc.minute === d.getMinutes() && this.fired[sc.id] !== key) {
+        try { this.feed(sc.grams, false); this.fired[sc.id] = key; } catch (e) { if (e.message !== 'Already dispensing') this.fired[sc.id] = key; }
+      }
+    });
+  },
+  today(){ const k = new Date().toDateString(); return this.log.filter(l => new Date(l.t*1000).toDateString() === k).reduce((a,l) => a + l.grams, 0); }
+};
+(function seed(){
+  const d = new Date(); const t = Math.floor(d.getTime()/1000);
+  const h = n => { const x = new Date(); x.setHours(n[0], n[1], 0, 0); return Math.floor(x.getTime()/1000); };
+  const cand = [[7,0,150,'schedule'],[12,30,80,'schedule']].filter(c => h(c) < t);
+  cand.reverse().forEach(c => demo.log.unshift({ t: h(c), grams: c[2], src: c[3] }));
+  demo.log.sort((a,b) => b.t - a.t);
+  demo.fired = {}; const k = d.toDateString();
+  cand.forEach(c => { const s = demo.schedules.find(x => x.hour === c[0] && x.minute === c[1]); if (s) demo.fired[s.id] = k; });
+})();
+setInterval(() => { if (cfg.mode === 'demo') demo.tick(); }, 1000);
+
+/* ---------- API layer (same shape for demo and real device) ---------- */
+async function http(path){
+  const c = new AbortController(); const t = setTimeout(() => c.abort(), 3500);
+  try {
+    const r = await fetch((cfg.ip ? 'http://' + cfg.ip : '') + path, { signal: c.signal });
+    let body = null; try { body = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((body && body.error) || ('Feeder error ' + r.status));
+    return body;
+  } finally { clearTimeout(t); }
+}
+const api = {
+  async status(){
+    if (cfg.mode === 'demo') return { ...demo.s, today: demo.today() };
+    return http('/api/status');
+  },
+  async schedules(){
+    if (cfg.mode === 'demo') return demo.schedules.filter(s => s.used).map(s => ({ ...s }));
+    return http('/api/schedules');
+  },
+  async log(){
+    if (cfg.mode === 'demo') return demo.log.slice();
+    return http('/api/log');
+  },
+  async feed(g){
+    if (cfg.mode === 'demo') return demo.feed(g, true);
+    return http('/api/feed?grams=' + g);
+  },
+  async add(hour, minute, grams){
+    if (cfg.mode === 'demo') {
+      if (demo.schedules.filter(s => s.used).length >= 8) throw new Error('Schedule list is full (8 max)');
+      const id = Math.max(-1, ...demo.schedules.map(s => s.id)) + 1;
+      demo.schedules.push({ id, used: true, enabled: true, hour, minute, grams }); return;
+    }
+    return http('/api/schedule/add?hour=' + hour + '&minute=' + minute + '&grams=' + grams);
+  },
+  async del(id){
+    if (cfg.mode === 'demo') { demo.schedules = demo.schedules.filter(s => s.id !== id); return; }
+    return http('/api/schedule/delete?id=' + id);
+  },
+  async toggle(id){
+    if (cfg.mode === 'demo') { const s = demo.schedules.find(s => s.id === id); if (s) s.enabled = !s.enabled; return; }
+    return http('/api/schedule/toggle?id=' + id);
+  },
+  async refill(){
+    if (cfg.mode === 'demo') { demo.s.remaining = demo.s.capacity; return; }
+    return http('/api/refill');
+  }
+};
+
+/* ---------- state + rendering ---------- */
+let D = { status: null, schedules: [], log: [], online: false };
+let busy = false;
+
+async function refresh(){
+  try {
+    const [status, schedules, log] = await Promise.all([api.status(), api.schedules(), api.log()]);
+    D = { status, schedules, log, online: true };
+  } catch (e) { D.online = false; }
+  render();
+}
+
+const fmt12 = (h, m) => { const ap = h >= 12 ? 'PM' : 'AM'; const hh = h % 12 === 0 ? 12 : h % 12; return { t: hh + ':' + String(m).padStart(2, '0'), ap }; };
+
+function nextFeeding(){
+  const now = new Date(); let best = null;
+  D.schedules.filter(s => s.enabled).forEach(s => {
+    const d = new Date(); d.setHours(s.hour, s.minute, 0, 0);
+    if (d <= now) d.setDate(d.getDate() + 1);
+    if (!best || d < best.d) best = { d, s };
+  });
+  return best;
+}
+
+function render(){
+  const st = D.status, pill = $('#conn');
+  pill.className = 'pill ' + (cfg.mode === 'demo' ? 'demo' : (D.online ? 'on' : 'off'));
+  $('#connText').textContent = cfg.mode === 'demo' ? 'Demo mode' : (D.online ? 'Feeder online' + (st && st.rssi ? ' · ' + st.rssi + ' dBm' : '') : 'Feeder offline – check IP and Wi-Fi');
+
+  if (st) {
+    const pct = clamp(st.remaining / st.capacity, 0, 1);
+    const top = 215 - pct * 195;
+    $('#level').setAttribute('y', top); $('#level').setAttribute('height', 215 - top + 2);
+    $('#remainText').textContent = st.remaining + ' g';
+    $('#remainSub').textContent = Math.round(pct * 100) + '% of ' + st.capacity + ' g' + (pct < .15 ? ' – refill soon' : '');
+    $('#gate').style.transform = 'rotate(' + clamp(st.servo, 0, 90) + 'deg)';
+    $('#hopperSvg').classList.toggle('feeding', !!st.feeding);
+    if (st.fixedMs) $('#est').textContent = 'gate open ' + (st.fixedMs / 1000) + ' s per feeding';
+    $('#feedBtn').textContent = st.feeding ? 'Dispensing…' : 'Dispense food';
+    $('#feedBtn').disabled = st.feeding || busy || !D.online;
+
+    const today = st.today || 0, goal = cfg.goal;
+    $('#todayG').textContent = today; $('#goalG').textContent = goal;
+    const p = clamp(today / goal * 100, 0, 100);
+    $('#meter').style.width = p + '%'; $('#meterWrap').setAttribute('aria-valuenow', Math.round(p));
+  } else {
+    $('#feedBtn').disabled = true;
+    $('#feedBtn').textContent = 'Waiting for feeder…';
+  }
+
+  // schedule list
+  const ul = $('#schedList');
+  if (!D.schedules.length) ul.innerHTML = '<li class="empty" style="display:block">No feedings yet. Add a time below.</li>';
+  else ul.innerHTML = D.schedules.slice().sort((a,b) => a.hour*60+a.minute - (b.hour*60+b.minute)).map(s => {
+    const f = fmt12(s.hour, s.minute);
+    return '<li class="' + (s.enabled ? '' : 'off-row') + '">' +
+      '<span class="sched-time">' + f.t + '<small>' + f.ap + '</small></span>' +
+      '<span class="sched-g">' + s.grams + ' g</span>' +
+      '<button class="switch" role="switch" aria-checked="' + s.enabled + '" aria-label="Turn ' + f.t + ' ' + f.ap + ' feeding ' + (s.enabled ? 'off' : 'on') + '" data-toggle="' + s.id + '"></button>' +
+      '<button class="icon-btn" aria-label="Delete ' + f.t + ' ' + f.ap + ' feeding" data-del="' + s.id + '">✕</button></li>';
+  }).join('');
+
+  // next feeding
+  const nf = nextFeeding();
+  if (nf) {
+    const mins = Math.round((nf.d - new Date()) / 60000), f = fmt12(nf.s.hour, nf.s.minute);
+    const eta = mins >= 60 ? Math.floor(mins/60) + ' h ' + (mins % 60) + ' min' : mins + ' min';
+    $('#next').innerHTML = 'Next feeding: <b>' + f.t + ' ' + f.ap + '</b>, ' + nf.s.grams + ' g, in ' + eta;
+  } else $('#next').textContent = 'No feedings scheduled.';
+
+  // log
+  const ll = $('#logList');
+  ll.innerHTML = D.log.length ? D.log.slice(0, 10).map(l => {
+    const d = new Date(l.t * 1000);
+    const day = d.toDateString() === new Date().toDateString() ? 'Today' : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return '<li><span>' + day + ', ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) +
+      '<span class="tag ' + l.src + '">' + (l.src === 'manual' ? 'Manual' : 'Scheduled') + '</span></span><b>' + l.grams + ' g</b></li>';
+  }).join('') : '<li class="empty" style="display:block;border:0">No feedings recorded yet.</li>';
+}
+
+/* ---------- interactions ---------- */
+let toastT;
+function toast(msg, err){
+  const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
+  clearTimeout(toastT); toastT = setTimeout(() => t.className = '', 3200);
+}
+async function act(fn, okMsg){
+  busy = true;
+  try { await fn(); if (okMsg) toast(okMsg); }
+  catch (e) { toast(e.name === 'AbortError' ? 'Could not reach the feeder.' : (e.message === 'Failed to fetch' ? 'Could not reach the feeder. Check the IP address and Wi-Fi.' : e.message), true); }
+  busy = false; refresh();
+}
+
+const portion = $('#portion');
+function setPortion(g){
+  portion.value = g; $('#portionNum').textContent = g;
+  const ms = D.status && D.status.fixedMs;
+  $('#est').textContent = ms ? 'gate open ' + (ms / 1000) + ' s per feeding' : 'gate open for a set time per feeding';
+  document.querySelectorAll('#presets button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.g === +g)));
+}
+portion.addEventListener('input', () => setPortion(+portion.value));
+$('#feedBtn').addEventListener('click', () => act(() => api.feed(+portion.value), 'Dispensing ' + portion.value + ' g'));
+$('#refillBtn').addEventListener('click', () => act(() => api.refill(), 'Hopper marked as full'));
+
+$('#addBtn').addEventListener('click', () => {
+  const [h, m] = $('#newTime').value.split(':').map(Number);
+  const g = +$('#newGrams').value;
+  if (isNaN(h) || isNaN(m)) return toast('Pick a time first', true);
+  if (!(g >= 10 && g <= 300)) return toast('Portion must be 10–300 g', true);
+  act(() => api.add(h, m, g), 'Feeding added');
+});
+$('#schedList').addEventListener('click', e => {
+  const t = e.target.closest('[data-toggle]'), d = e.target.closest('[data-del]');
+  if (t) act(() => api.toggle(+t.dataset.toggle));
+  if (d) act(() => api.del(+d.dataset.del), 'Feeding deleted');
+});
+
+/* settings dialog */
+const dlg = $('#dlg');
+$('#settingsBtn').addEventListener('click', () => {
+  document.querySelectorAll('input[name=mode]').forEach(r => r.checked = r.value === cfg.mode);
+  $('#ipInput').value = cfg.ip; $('#goalInput').value = cfg.goal; dlg.showModal();
+});
+$('#dlgCancel').addEventListener('click', () => dlg.close());
+$('#dlgSave').addEventListener('click', () => {
+  if (!SERVED) {
+    cfg.mode = document.querySelector('input[name=mode]:checked').value;
+    cfg.ip = $('#ipInput').value.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (cfg.mode === 'esp32' && !cfg.ip) { toast('Enter the ESP32 IP address', true); return; }
+  }
+  cfg.goal = clamp(+$('#goalInput').value || 400, 50, 2000);
+  saveCfg(); dlg.close(); D = { status: null, schedules: [], log: [], online: false }; render(); refresh();
+});
+
+setPortion(100);
+render();
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
